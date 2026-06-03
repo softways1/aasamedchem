@@ -324,12 +324,19 @@ a:hover {
   font-family: var(--font-display);
   font-size: 1.6rem;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--primary), #FF5E7E);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.logo-text svg {
+  color: var(--primary);
+}
+
+.logo-text > span:first-of-type {
+  background: linear-gradient(135deg, var(--primary), #FF5E7E);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .nav-links {
