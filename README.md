@@ -48,26 +48,114 @@ graph TD
 
 ---
 
-## 👥 Multi-Role Interactions
+## 👥 Multi-Role Interactions & Advanced Functionalities
 
-### 1. Admin Panel (`/admin`)
-* **Platform Overview**: Displays statistics for Marketplace Users, active listings, total orders, and Gross Merchandise Value (GMV).
-* **User Moderation**: Lists all registered customers and sellers with the option to delete accounts.
-* **Product Moderation**: Inspects all active listings across the platform. Admins can delete any product not found genuine. Deleting a product automatically logs a system warning for the seller.
-* **Order Monitoring**: Tracks every order placed on the platform.
-
-### 2. Seller Panel (`/seller`)
-* **Inventory Management**: Sellers can list, edit, or remove their own products, configure base price rates, and manage stock quantities.
-* **Fulfillment Management**: Receives incoming orders placed for their products, allowing sellers to Approve, Reject, or Complete them.
-* **System Alerts**: Displays a warning banner at the top of the dashboard containing real-time notifications if any of their products have been delisted by the Admin.
-
-### 3. Customer Portal (`/customer`)
-* **Marketplace Catalog**: Customers browse items listed by all sellers, showing tags like `"Sold by: Rohan Sharma"`.
-* **Configurator**: Selects compatible ordering units (e.g. grams vs. kilograms) with real-time conversion previews, price calculations, and stock checks.
-* **Multi-Seller Checkout**: When checking out a cart containing items from multiple sellers, the backend transaction split-groups the items by `sellerId`, creating distinct orders per seller.
-* **Purchase History**: Tracks the approval and completion status of their orders.
+AASAMEDCHEM implements a highly secure, role-restricted operational workflow dividing the platform into three specific personas. Each role is guarded by custom HMAC-SHA256 cryptographic cookie-based session verification.
 
 ---
+
+### 1. Admin Control Console (`/admin`)
+The **Admin Panel** provides global marketplace oversight, analytics monitoring, user moderation, and product list policing.
+
+* **Exposed Frontend UI**:
+  * **Admin Dashboard Overview**: Live platform-wide KPIs (Active Users count, Active Products count, Total Orders count, and live aggregated Gross Merchandise Value (GMV) calculated on the server).
+  * **User Control Center**: Interactive tabular list of all registered Sellers and Customers with detailed metadata.
+  * **Global Catalog Inspector**: Comprehensive listing of all platform products with complete seller attribution.
+  * **System-Wide Order Logs**: Unified list of all orders placed across the system.
+* **Core Capabilities & Functions**:
+  * **Global User Moderation**: Authority to terminate/delete customer or seller accounts. Deleting a user safely cascades through relational constraints in the database.
+  * **Direct Product Delisting**: Ability to delete any listed product (e.g. in case of counterfeit items or price anomalies).
+  * **Automated Alert Generation**: Delisting a product dynamically initiates an automated pipeline that injects an urgent alert notification in the `Notification` table, targeted specifically at the product's Seller.
+* **Exposed Backend API Endpoints**:
+  * `GET /api/users` — Fetches the list of all registered platform users.
+  * `DELETE /api/users/[id]` — Restrictedly deletes a platform user account.
+  * `GET /api/products` — Fetches all platform listings.
+  * `DELETE /api/products/[id]` — Delists a product and automatically generates a delisting notification for the corresponding seller.
+  * `GET /api/orders` — Retreives all platform orders for GMV aggregation.
+
+---
+
+### 2. Seller Inventory & Order Dashboard (`/seller`)
+The **Seller Dashboard** acts as an ERP panel for individual merchants, enabling catalog governance, transactional order fulfillment, and notification awareness.
+
+* **Exposed Frontend UI**:
+  * **Delisting Warning Banner**: A real-time notification alert bar at the top of the dashboard containing alerts of products delisted by Admin.
+  * **Active Inventory List**: Table showing the seller's own products, current base stock, and configured base pricing.
+  * **Product Creation & Modification Modal**: Pop-ups to list new items or edit existing ones.
+  * **Order Fulfillment Center**: Segmented order tracker displaying orders pending approval, active, or complete.
+* **Core Capabilities & Functions**:
+  * **Siloed Catalog Management (CRUD)**: Sellers can create, read, update, and delete their own products. Products are hard-linked to the seller's authenticated session, preventing cross-tenant access.
+  * **Dynamic Unit Setup**: Sellers register products using specific Base Units (e.g., `g`, `mL`, `items`) and assign price rates relative to that base unit.
+  * **Stateful Order Fulfillment & Stock Locking**:
+    * **Approve Order**: Transactionally checks if current stock supports the order. If yes, it decrements the inventory level and locks the stock, changing status to `APPROVED`.
+    * **Reject Order**: Cancels the order, restoring any allocated stock back to inventory if the order had been approved, and updates status to `REJECTED`.
+    * **Complete Order**: Finalizes the lifecycle, setting status to `COMPLETED`.
+  * **Real-time Alert Acknowledgement**: Allows sellers to dismiss notifications once read.
+* **Exposed Backend API Endpoints**:
+  * `GET /api/products?sellerId=...` — Fetches the authenticated seller's inventory.
+  * `POST /api/products` — Adds a new product linked to the logged-in seller.
+  * `PUT /api/products/[id]` — Modifies an existing product (enforces owner validation).
+  * `DELETE /api/products/[id]` — Removes a product owned by the seller.
+  * `GET /api/orders` — Retreives orders received by the seller.
+  * `PUT /api/orders/[id]` — Processes order status transitions (Approved, Rejected, Completed) with concurrent stock adjustments.
+  * `GET /api/notifications` — Checks active delisting alerts for the logged-in seller.
+  * `PUT /api/notifications` — Dismisses active delisting notifications.
+
+---
+
+### 3. Customer Catalog & Order Portal (`/customer`)
+The **Customer Portal** allows users to browse active products across all sellers, compute exact volume/mass conversions on the fly, checkout with automatic cart-splitting, and trace purchase status.
+
+* **Exposed Frontend UI**:
+  * **Global Catalog Explorer**: Browse and search active items with explicit "Sold by [Seller Name]" badges.
+  * **Unit Conversion & Order Configurator**: Slide-out panel that performs real-time unit translation calculations.
+  * **Unified Shopping Cart**: Dynamic list tracking items selected across different sellers.
+  * **My Orders Ledger**: Complete timeline view of historical orders with color-coded status badges (`PENDING`, `APPROVED`, `REJECTED`, `COMPLETED`).
+* **Core Capabilities & Functions**:
+  * **High-Precision Multi-Unit Order Configurator**: Calculates purchasing volumes. For example, if a seller stores a product in grams (`g`), the customer can configure their order in kilograms (`kg`). The system validates the stock limits in base units and displays real-time pricing conversions (`1 kg = 1000 g`).
+  * **Transactional Multi-Seller Cart Splitting**: Customers can add items from multiple distinct sellers to one cart. On checkout, the backend parses the checkout body, groups items by `sellerId`, and executes atomic writes to construct unique sub-orders for each seller, guaranteeing that sellers only see their own items.
+* **Exposed Backend API Endpoints**:
+  * `GET /api/products` — Reads the global product catalog.
+  * `GET /api/orders` — Pulls customer's historical orders.
+  * `POST /api/orders` — Performs atomic cart-split checkout logic.
+
+---
+
+## ⚡ Advanced Engineering Systems (Behind the Scenes)
+
+### 🔄 Multi-Seller Order Split Checkout Engine
+When checking out a mixed cart, standard e-commerce databases risk data fragmentation or incorrect order views. AASAMEDCHEM resolves this by splitting order objects at the API layer:
+1. The frontend submits a single cart array containing items with different `sellerId`s.
+2. The `/api/orders` POST handler groups order items by `sellerId`.
+3. It performs a database transaction (`db.$transaction`) where:
+   - A parent `Order` is created for *each* seller containing their specific subset of items.
+   - Separate `OrderItem` lines are generated mapping to each product.
+   - The buyer receives a summary of all split orders created.
+
+### ⚖️ Real-Time Metric Unit Translation
+Medical B2B orders require flexible scale selection. The conversion logic runs on both sides:
+- **Frontend Previews**: When a customer changes the unit from the product's base unit (e.g. `mL` to `L`), the configurator uses mathematical scaling to preview quantities and calculate price tags:
+  $$\text{Converted Qty} = \text{Input Qty} \times \text{Multiplier}$$
+  $$\text{Converted Price} = \frac{\text{Base Price}}{\text{Multiplier}}$$
+- **Backend Validation**: During cart checking and order insertion, the API sanitizes the unit input, normalizes the ordered amount back into the product's **base unit**, verifies stock availability, and saves the conversion ratios in `OrderItem` to maintain price auditing.
+
+### 🔒 Stock-Lock & Auto-Reversion Lifecycle
+To prevent overselling and inventory race-conditions:
+* Orders default to `PENDING` (no stock is deducted yet).
+* Upon seller approval (`APPROVED`), the system performs an atomic check. If stock is available, it decrements the `Product.stockQuantity`.
+* If a seller subsequently rejects the order, or if the order is cancelled, a reversal script increments the inventory level by the locked quantity:
+  ```javascript
+  if (oldStatus === 'APPROVED' && newStatus === 'REJECTED') {
+    // Automatically revert the product stock in database
+    await tx.product.update({
+      where: { id: item.productId },
+      data: { stockQuantity: { increment: item.baseQuantity } }
+    });
+  }
+  ```
+
+---
+
 
 ## 📊 Database Schema & Key Tables
 
