@@ -188,6 +188,11 @@ To support high-precision medical measurements (e.g. milligrams of powder, milli
 
 ---
 
+## 🧠 Advanced Scaling & Concurrency Architecture
+For a deep-dive analysis of caching strategies, Redis distributed locks, deadlock prevention, and database transaction isolations, please see the [SCALING_ROADMAP.md](file:///c:/Users/AMAN%20KUMAR%20SINGH/Desktop/ASSAMEDCHEM/SCALING_ROADMAP.md) document in the root directory.
+
+---
+
 ## 🚀 Setup Instructions (Local Execution)
 
 ### 1. Install Dependencies
