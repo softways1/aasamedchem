@@ -54,22 +54,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleQuickFill = (type) => {
-    setError('');
-    setSuccess('');
-    setIsSignUp(false);
-    if (type === 'admin') {
-      setUsername('admin');
-      setPassword('admin123');
-    } else if (type === 'seller') {
-      setUsername('seller');
-      setPassword('seller123');
-    } else {
-      setUsername('customer');
-      setPassword('customer123');
-    }
-  };
-
   return (
     <div style={{
       display: 'flex',
@@ -261,33 +245,6 @@ export default function LoginPage() {
           </button>
         </div>
 
-        {/* Quick Fill Accounts */}
-        <div style={{
-          borderTop: '1px solid var(--border-color)',
-          paddingTop: '1.5rem',
-          textAlign: 'center'
-        }}>
-          <p style={{
-            fontSize: '0.8rem',
-            color: 'var(--text-muted)',
-            fontWeight: 600,
-            marginBottom: '0.75rem',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em'
-          }}>
-            Quick Fill Demo Accounts
-          </p>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => handleQuickFill('admin')}
-              type="button"
-              style={{ fontSize: '0.75rem' }}
-            >
-              Dr. Sarah (Admin)
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
