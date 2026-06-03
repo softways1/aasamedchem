@@ -110,8 +110,8 @@ npm install
 ### 2. Configure Environment Variables
 Create a file named `.env` in the root directory:
 ```env
-DATABASE_URL="postgresql://neondb_owner:npg_0YDdju7ovNcZ@ep-bitter-poetry-aqmxo0y5.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require"
-SESSION_SECRET="aasamedchem_super_secret_session_token_key_12345"
+DATABASE_URL="your-postgresql-neon-database-url"
+SESSION_SECRET="your-session-secret-key"
 ```
 
 ### 3. Setup Database Schema & Seed Data
@@ -151,7 +151,7 @@ The application is fully configured and ready for serverless deployments on Verc
 2. **Deploy on Vercel**:
    * Log into [vercel.com](https://vercel.com) and import your repository.
    * Add the following **Environment Variables** in the Vercel project settings:
-     * `DATABASE_URL`: `postgresql://neondb_owner:npg_0YDdju7ovNcZ@ep-bitter-poetry-aqmxo0y5.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require`
-     * `SESSION_SECRET`: `aasamedchem_super_secret_session_token_key_12345`
+     * `DATABASE_URL`: `your-postgresql-neon-database-url`
+     * `SESSION_SECRET`: `your-session-secret-key`
    * Click **Deploy**. Vercel will compile the Next.js production build and supply a live URL!
 
