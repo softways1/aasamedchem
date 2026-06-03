@@ -2,21 +2,20 @@ import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { verifySession } from '@/lib/auth';
 
-// Helper to check for Admin session
-async function getAdminSession() {
+// Helper to get active session
+async function getSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get('session')?.value;
-  const session = await verifySession(token);
-  if (!session || session.role !== 'ADMIN') return null;
-  return session;
+  return verifySession(token);
 }
 
-// GET: Fetch products with search and category filters
+// GET: Fetch products with search, category, and own-seller filters
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const category = searchParams.get('category') || '';
+    const own = searchParams.get('own') === 'true';
 
     // Build filter query
     const where = {};
@@ -34,8 +33,21 @@ export async function GET(request) {
       ];
     }
 
+    if (own) {
+      const session = await getSession();
+      if (!session || session.role !== 'SELLER') {
+        return Response.json({ error: 'Unauthorized. Seller role required for filtering own products.' }, { status: 403 });
+      }
+      where.sellerId = session.userId;
+    }
+
     const products = await db.product.findMany({
       where,
+      include: {
+        seller: {
+          select: { name: true, username: true }
+        }
+      },
       orderBy: { name: 'asc' }
     });
 
@@ -45,12 +57,12 @@ export async function GET(request) {
   }
 }
 
-// POST: Create a product (Admin only)
+// POST: Create a product (Seller only)
 export async function POST(request) {
   try {
-    const admin = await getAdminSession();
-    if (!admin) {
-      return Response.json({ error: 'Unauthorized. Admin role required.' }, { status: 403 });
+    const session = await getSession();
+    if (!session || session.role !== 'SELLER') {
+      return Response.json({ error: 'Unauthorized. Seller role required.' }, { status: 403 });
     }
 
     const { sku, name, description, category, baseUnit, pricePerBaseUnit, stockQuantity } = await request.json();
@@ -79,7 +91,8 @@ export async function POST(request) {
         category,
         baseUnit,
         pricePerBaseUnit: parseFloat(pricePerBaseUnit),
-        stockQuantity: parseFloat(stockQuantity)
+        stockQuantity: parseFloat(stockQuantity),
+        sellerId: session.userId
       }
     });
 

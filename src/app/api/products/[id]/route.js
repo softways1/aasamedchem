@@ -2,20 +2,18 @@ import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { verifySession } from '@/lib/auth';
 
-async function getAdminSession() {
+async function getSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get('session')?.value;
-  const session = await verifySession(token);
-  if (!session || session.role !== 'ADMIN') return null;
-  return session;
+  return verifySession(token);
 }
 
-// PUT: Update product details (Admin only)
+// PUT: Update product details (Seller owner or Admin)
 export async function PUT(request, { params }) {
   try {
-    const admin = await getAdminSession();
-    if (!admin) {
-      return Response.json({ error: 'Unauthorized. Admin role required.' }, { status: 403 });
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { id } = await params;
@@ -25,7 +23,22 @@ export async function PUT(request, { params }) {
       return Response.json({ error: 'Name, Price, and Stock Quantity are required.' }, { status: 400 });
     }
 
-    const product = await db.product.update({
+    // Fetch product to verify ownership
+    const product = await db.product.findUnique({
+      where: { id }
+    });
+
+    if (!product) {
+      return Response.json({ error: 'Product not found.' }, { status: 404 });
+    }
+
+    // Authorized if Admin or the Seller who owns the product
+    const isAuthorized = session.role === 'ADMIN' || (session.role === 'SELLER' && product.sellerId === session.userId);
+    if (!isAuthorized) {
+      return Response.json({ error: 'Forbidden. You do not own this product.' }, { status: 403 });
+    }
+
+    const updatedProduct = await db.product.update({
       where: { id },
       data: {
         name,
@@ -36,23 +49,38 @@ export async function PUT(request, { params }) {
       }
     });
 
-    return Response.json({ success: true, product });
+    return Response.json({ success: true, product: updatedProduct });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
 
-// DELETE: Delete a product (Admin only)
+// DELETE: Delete a product (Seller owner or Admin)
 export async function DELETE(request, { params }) {
   try {
-    const admin = await getAdminSession();
-    if (!admin) {
-      return Response.json({ error: 'Unauthorized. Admin role required.' }, { status: 403 });
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { id } = await params;
     
-    // Check if the product has any orders before deleting (to prevent database integrity errors)
+    // Fetch product to verify ownership
+    const product = await db.product.findUnique({
+      where: { id }
+    });
+
+    if (!product) {
+      return Response.json({ error: 'Product not found.' }, { status: 404 });
+    }
+
+    // Authorized if Admin or the Seller who owns the product
+    const isAuthorized = session.role === 'ADMIN' || (session.role === 'SELLER' && product.sellerId === session.userId);
+    if (!isAuthorized) {
+      return Response.json({ error: 'Forbidden. You do not own this product.' }, { status: 403 });
+    }
+
+    // Check if the product has any orders before deleting
     const orderItemsCount = await db.orderItem.count({
       where: { productId: id }
     });

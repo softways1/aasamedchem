@@ -2,20 +2,18 @@ import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { verifySession } from '@/lib/auth';
 
-async function getAdminSession() {
+async function getSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get('session')?.value;
-  const session = await verifySession(token);
-  if (!session || session.role !== 'ADMIN') return null;
-  return session;
+  return verifySession(token);
 }
 
-// PUT: Update order status (Admin only)
+// PUT: Update order status (Seller owner or Admin)
 export async function PUT(request, { params }) {
   try {
-    const admin = await getAdminSession();
-    if (!admin) {
-      return Response.json({ error: 'Unauthorized. Admin role required.' }, { status: 403 });
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { id } = await params;
@@ -35,6 +33,12 @@ export async function PUT(request, { params }) {
 
       if (!order) {
         throw new Error('Order not found.');
+      }
+
+      // Check authorization
+      const isAuthorized = session.role === 'ADMIN' || (session.role === 'SELLER' && order.sellerId === session.userId);
+      if (!isAuthorized) {
+        throw new Error('Forbidden. You are not authorized to update this order.');
       }
 
       // If the order status is changing to REJECTED and was not rejected before, restore the stock

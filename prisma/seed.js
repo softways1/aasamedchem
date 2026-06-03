@@ -4,9 +4,8 @@ import { hashPassword } from '../src/lib/auth.js';
 async function seed() {
   console.log('--- Database Seeding Started ---');
 
-  // 1. Create Users
+  // 1. Create Admin User
   const adminPasswordHash = await hashPassword('admin123');
-  const sellerPasswordHash = await hashPassword('seller123');
 
   const admin = await db.user.upsert({
     where: { username: 'admin' },
@@ -20,19 +19,7 @@ async function seed() {
   });
   console.log(`✓ Admin user seeded: ${admin.username}`);
 
-  const seller = await db.user.upsert({
-    where: { username: 'seller' },
-    update: { passwordHash: sellerPasswordHash },
-    create: {
-      username: 'seller',
-      passwordHash: sellerPasswordHash,
-      role: 'SELLER',
-      name: 'Rohan Sharma (Seller)'
-    }
-  });
-  console.log(`✓ Seller user seeded: ${seller.username}`);
-
-  // 2. Create Products
+  // 2. Create Products (assigned to Admin)
   const products = [
     {
       sku: 'PAR-RAW-001',
@@ -41,7 +28,8 @@ async function seed() {
       category: 'API / Raw Material',
       baseUnit: 'kg',
       pricePerBaseUnit: 450.000000,
-      stockQuantity: 25.500000
+      stockQuantity: 25.500000,
+      sellerId: admin.id
     },
     {
       sku: 'AMX-PWD-002',
@@ -50,7 +38,8 @@ async function seed() {
       category: 'API / Raw Material',
       baseUnit: 'g',
       pricePerBaseUnit: 1.500000,
-      stockQuantity: 5000.000000
+      stockQuantity: 5000.000000,
+      sellerId: admin.id
     },
     {
       sku: 'COF-SYR-003',
@@ -59,7 +48,8 @@ async function seed() {
       category: 'Formulations / Liquids',
       baseUnit: 'L',
       pricePerBaseUnit: 280.000000,
-      stockQuantity: 120.000000
+      stockQuantity: 120.000000,
+      sellerId: admin.id
     },
     {
       sku: 'SAL-IV-004',
@@ -68,7 +58,8 @@ async function seed() {
       category: 'Formulations / Liquids',
       baseUnit: 'mL',
       pricePerBaseUnit: 0.120000,
-      stockQuantity: 80000.000000
+      stockQuantity: 80000.000000,
+      sellerId: admin.id
     },
     {
       sku: 'VIT-C-005',
@@ -77,7 +68,8 @@ async function seed() {
       category: 'OTC / Supplements',
       baseUnit: 'items',
       pricePerBaseUnit: 120.000000,
-      stockQuantity: 450.000000
+      stockQuantity: 450.000000,
+      sellerId: admin.id
     }
   ];
 
@@ -90,7 +82,8 @@ async function seed() {
         category: product.category,
         baseUnit: product.baseUnit,
         pricePerBaseUnit: product.pricePerBaseUnit,
-        stockQuantity: product.stockQuantity
+        stockQuantity: product.stockQuantity,
+        sellerId: product.sellerId
       },
       create: product
     });

@@ -5,19 +5,16 @@ import React, { useState, useEffect } from 'react';
 import { 
   Activity, 
   LogOut, 
-  Plus, 
-  Edit, 
   Trash2, 
-  Check, 
-  X, 
-  RefreshCw, 
   Search, 
   Filter, 
   Package, 
   DollarSign, 
   FileText, 
   User as UserIcon,
-  ShoppingBag
+  Users as UsersIcon,
+  ShoppingBag,
+  TrendingUp
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -25,27 +22,17 @@ export default function AdminPage() {
   const [user, setUser] = useState(null);
   
   // Data state
+  const [usersList, setUsersList] = useState([]);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Tab State
+  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'products' | 'orders'
+
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [categories, setCategories] = useState([]);
-
-  // Modals state
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null); // null means adding
-  
-  // Form fields
-  const [sku, setSku] = useState('');
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
-  const [baseUnit, setBaseUnit] = useState('g');
-  const [pricePerBaseUnit, setPricePerBaseUnit] = useState('');
-  const [stockQuantity, setStockQuantity] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
   
   // UI status
   const [errorMsg, setErrorMsg] = useState('');
@@ -64,14 +51,15 @@ export default function AdminPage() {
       
       setUser(authData.user);
 
+      // Fetch users
+      const userRes = await fetch('/api/users');
+      const userData = await userRes.json();
+      setUsersList(userData);
+
       // Fetch products
       const prodRes = await fetch('/api/products');
       const prodData = await prodRes.json();
       setProducts(prodData);
-
-      // Collect unique categories
-      const cats = Array.from(new Set(prodData.map(p => p.category).filter(Boolean)));
-      setCategories(cats);
 
       // Fetch orders
       const orderRes = await fetch('/api/orders');
@@ -98,79 +86,33 @@ export default function AdminPage() {
     }
   };
 
-  const handleOpenProductModal = (product = null) => {
+  const handleUserDelete = async (userId) => {
+    if (!confirm('Are you sure you want to delete this user? All their associated records will be deleted.')) return;
     setErrorMsg('');
     setSuccessMsg('');
-    if (product) {
-      setEditingProduct(product);
-      setSku(product.sku);
-      setName(product.name);
-      setDescription(product.description || '');
-      setCategory(product.category || '');
-      setBaseUnit(product.baseUnit);
-      setPricePerBaseUnit(product.pricePerBaseUnit.toString());
-      setStockQuantity(product.stockQuantity.toString());
-    } else {
-      setEditingProduct(null);
-      setSku('');
-      setName('');
-      setDescription('');
-      setCategory('');
-      setBaseUnit('g');
-      setPricePerBaseUnit('');
-      setStockQuantity('');
-    }
-    setIsProductModalOpen(true);
-  };
-
-  const handleProductSubmit = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    const payload = {
-      sku,
-      name,
-      description,
-      category,
-      baseUnit,
-      pricePerBaseUnit: parseFloat(pricePerBaseUnit),
-      stockQuantity: parseFloat(stockQuantity)
-    };
 
     try {
-      let res;
-      if (editingProduct) {
-        // Edit product
-        res = await fetch(`/api/products/${editingProduct.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        // Create product
-        res = await fetch('/api/products', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      }
-
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE'
+      });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Operation failed');
-
-      setSuccessMsg(editingProduct ? 'Product updated successfully!' : 'Product added successfully!');
-      setIsProductModalOpen(false);
       
-      // Refresh products list
+      if (!res.ok) throw new Error(data.error || 'Failed to delete user');
+
+      setSuccessMsg('User deleted successfully!');
+      
+      // Refresh user list and other states
+      const userRes = await fetch('/api/users');
+      const userData = await userRes.json();
+      setUsersList(userData);
+
       const prodRes = await fetch('/api/products');
       const prodData = await prodRes.json();
       setProducts(prodData);
-      
-      // Update categories
-      const cats = Array.from(new Set(prodData.map(p => p.category).filter(Boolean)));
-      setCategories(cats);
 
+      const orderRes = await fetch('/api/orders');
+      const orderData = await orderRes.json();
+      setOrders(orderData);
     } catch (err) {
       setErrorMsg(err.message);
     }
@@ -200,49 +142,44 @@ export default function AdminPage() {
     }
   };
 
-  const handleOrderStatusUpdate = async (orderId, newStatus) => {
-    setErrorMsg('');
-    setSuccessMsg('');
-    try {
-      const res = await fetch(`/api/orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+  // Filter lists based on active tab & query
+  const getFilteredData = () => {
+    if (activeTab === 'users') {
+      return usersList.filter(u => {
+        const matchesSearch = 
+          u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.username.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesRole = roleFilter ? u.role === roleFilter : true;
+        return matchesSearch && matchesRole;
       });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Failed to update order status');
-
-      setSuccessMsg(`Order status updated to ${newStatus}!`);
-
-      // Refresh orders and products (to show restored stock if rejected)
-      const orderRes = await fetch('/api/orders');
-      const orderData = await orderRes.json();
-      setOrders(orderData);
-
-      const prodRes = await fetch('/api/products');
-      const prodData = await prodRes.json();
-      setProducts(prodData);
-    } catch (err) {
-      setErrorMsg(err.message);
+    } else if (activeTab === 'products') {
+      return products.filter(p => {
+        const matchesSearch = 
+          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (p.seller?.name && p.seller.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        return matchesSearch;
+      });
+    } else {
+      return orders.filter(o => {
+        const matchesSearch = 
+          o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          o.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          o.user?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          o.seller?.name.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesSearch;
+      });
     }
   };
 
-  // Filtered Products
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = 
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesCategory = selectedCategory ? p.category === selectedCategory : true;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredItems = getFilteredData();
 
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: '1rem' }}>
         <Activity size={40} className="animate-pulse" style={{ color: 'var(--primary)' }} />
-        <p style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Loading AASAMEDCHEM Admin Panel...</p>
+        <p style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Loading AASAMEDCHEM Admin Control Console...</p>
       </div>
     );
   }
@@ -255,7 +192,7 @@ export default function AdminPage() {
           <div className="logo-text">
             <Activity size={28} />
             <span>AASAMEDCHEM</span>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, background: 'var(--primary-light)', color: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '50px', marginLeft: '0.5rem' }}>ADMIN PANEL</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, background: 'var(--primary-light)', color: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '50px', marginLeft: '0.5rem' }}>ADMIN HQ</span>
           </div>
           <div className="nav-links">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -274,7 +211,7 @@ export default function AdminPage() {
         {/* Messages */}
         {errorMsg && (
           <div className="alert alert-error fade-in">
-            <Check size={18} />
+            <AlertCircle size={18} />
             <span>{errorMsg}</span>
           </div>
         )}
@@ -290,11 +227,11 @@ export default function AdminPage() {
           <div className="card fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Total Products</p>
-                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>{products.length}</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Total Users</p>
+                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>{usersList.length}</h3>
               </div>
               <div style={{ background: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--primary)' }}>
-                <Package size={24} />
+                <UsersIcon size={24} />
               </div>
             </div>
           </div>
@@ -302,13 +239,13 @@ export default function AdminPage() {
           <div className="card fade-in" style={{ animationDelay: '0.1s' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Pending Orders</p>
-                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)', color: 'var(--warning)' }}>
-                  {orders.filter(o => o.status === 'PENDING').length}
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Active listings</p>
+                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>
+                  {products.length}
                 </h3>
               </div>
-              <div style={{ background: 'var(--warning-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--warning)' }}>
-                <RefreshCw size={24} />
+              <div style={{ background: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--primary)' }}>
+                <Package size={24} />
               </div>
             </div>
           </div>
@@ -316,12 +253,12 @@ export default function AdminPage() {
           <div className="card fade-in" style={{ animationDelay: '0.2s' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Completed Orders</p>
-                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)', color: 'var(--success)' }}>
-                  {orders.filter(o => o.status === 'COMPLETED').length}
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Total Orders</p>
+                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)', color: 'var(--primary)' }}>
+                  {orders.length}
                 </h3>
               </div>
-              <div style={{ background: 'var(--success-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--success)' }}>
+              <div style={{ background: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--primary)' }}>
                 <ShoppingBag size={24} />
               </div>
             </div>
@@ -330,365 +267,253 @@ export default function AdminPage() {
           <div className="card fade-in" style={{ animationDelay: '0.3s' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Total Revenue</p>
-                <h3 style={{ fontSize: '1.8rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Gross Volume</p>
+                <h3 style={{ fontSize: '1.8rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)', color: 'var(--success)' }}>
                   ₹{orders.filter(o => o.status !== 'REJECTED').reduce((acc, curr) => acc + parseFloat(curr.totalPrice), 0).toFixed(2)}
                 </h3>
               </div>
-              <div style={{ background: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--primary)' }}>
+              <div style={{ background: 'var(--success-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--success)' }}>
                 <DollarSign size={24} />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Section Tabs / Headers */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700 }}>
-            Inventory Management
-          </h2>
-          <button className="btn btn-primary" onClick={() => handleOpenProductModal()}>
-            <Plus size={18} />
-            <span>Add Product</span>
+        {/* Section Tabs */}
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '2rem' }}>
+          <button 
+            className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-outline'}`} 
+            onClick={() => { setActiveTab('users'); setSearchQuery(''); setRoleFilter(''); }}
+            style={{ borderRadius: '8px' }}
+          >
+            <UsersIcon size={18} />
+            <span>Manage Users</span>
+          </button>
+          <button 
+            className={`btn ${activeTab === 'products' ? 'btn-primary' : 'btn-outline'}`} 
+            onClick={() => { setActiveTab('products'); setSearchQuery(''); setRoleFilter(''); }}
+            style={{ borderRadius: '8px' }}
+          >
+            <Package size={18} />
+            <span>Manage Products</span>
+          </button>
+          <button 
+            className={`btn ${activeTab === 'orders' ? 'btn-primary' : 'btn-outline'}`} 
+            onClick={() => { setActiveTab('orders'); setSearchQuery(''); setRoleFilter(''); }}
+            style={{ borderRadius: '8px' }}
+          >
+            <FileText size={18} />
+            <span>Monitor Orders</span>
           </button>
         </div>
 
-        {/* Search & Filter Controls */}
-        <div className="search-container">
+        {/* Controls (Search & Filters) */}
+        <div className="search-container" style={{ marginBottom: '1.5rem' }}>
           <div className="search-input-wrapper">
             <Search className="search-icon" size={20} />
             <input
               type="text"
-              placeholder="Search by SKU, Product Name, Category..."
+              placeholder={
+                activeTab === 'users' ? 'Search users by name, username...' :
+                activeTab === 'products' ? 'Search products by SKU, name, seller...' :
+                'Search orders by ID, customer, seller, status...'
+              }
               className="form-control search-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '0.5rem' }}>
-            <Filter size={18} style={{ color: 'var(--text-muted)' }} />
-            <select
-              className="form-control"
-              style={{ width: '180px', padding: '0.5rem 1rem' }}
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-            >
-              <option value="">All Categories</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
+          
+          {activeTab === 'users' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '0.5rem' }}>
+              <Filter size={18} style={{ color: 'var(--text-muted)' }} />
+              <select
+                className="form-control"
+                style={{ width: '160px', padding: '0.5rem 1rem' }}
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+              >
+                <option value="">All Roles</option>
+                <option value="CUSTOMER">Customer</option>
+                <option value="SELLER">Seller</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+            </div>
+          )}
         </div>
 
-        {/* Inventory Table */}
+        {/* Dynamic Table Content */}
         <div className="table-container fade-in">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Product Name</th>
-                <th>Category</th>
-                <th>Base Unit</th>
-                <th style={{ textAlign: 'right' }}>Stock Level</th>
-                <th style={{ textAlign: 'right' }}>Price / Base Unit</th>
-                <th style={{ textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.length === 0 ? (
+          {activeTab === 'users' && (
+            <table className="custom-table">
+              <thead>
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                    No products found matching your criteria.
-                  </td>
+                  <th>Display Name</th>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>Joined Date</th>
+                  <th style={{ textAlign: 'center' }}>Actions</th>
                 </tr>
-              ) : (
-                filteredProducts.map(p => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{p.sku}</td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{p.name}</div>
-                      {p.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{p.description}</div>}
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '0.85rem', background: '#F8F9FA', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #E9ECEF' }}>
-                        {p.category || 'N/A'}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 600, textTransform: 'lowercase' }}>{p.baseUnit}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>
-                      {parseFloat(p.stockQuantity).toFixed(6)}
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: 'var(--success)' }}>
-                      ₹{parseFloat(p.pricePerBaseUnit).toFixed(6)}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleOpenProductModal(p)} title="Edit">
-                          <Edit size={14} />
-                        </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleProductDelete(p.id)} title="Delete">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+              </thead>
+              <tbody>
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                      No users found.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredItems.map(u => (
+                    <tr key={u.id}>
+                      <td style={{ fontWeight: 600 }}>{u.name}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>@{u.username}</td>
+                      <td>
+                        <span style={{ 
+                          fontSize: '0.8rem', 
+                          fontWeight: 700,
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          background: u.role === 'ADMIN' ? '#EBF8FF' : u.role === 'SELLER' ? '#FFF5F5' : '#E6FFFA',
+                          color: u.role === 'ADMIN' ? '#2B6CB0' : u.role === 'SELLER' ? '#C53030' : '#319795'
+                        }}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        {u.id !== user?.id && u.role !== 'ADMIN' ? (
+                          <button 
+                            className="btn btn-danger btn-sm" 
+                            onClick={() => handleUserDelete(u.id)}
+                            title="Delete User"
+                          >
+                            <Trash2 size={14} />
+                            <span>Delete</span>
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Restricted</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
 
-        {/* Orders Section */}
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.25rem', marginTop: '3rem' }}>
-          Incoming Quotations & Orders
-        </h2>
-
-        {/* Orders Table */}
-        <div className="table-container fade-in">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th>Order Details</th>
-                <th>Seller Info</th>
-                <th>Items & Unit Conversions</th>
-                <th style={{ textAlign: 'right' }}>Total Price</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
+          {activeTab === 'products' && (
+            <table className="custom-table">
+              <thead>
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                    No incoming quotations or orders yet.
-                  </td>
+                  <th>SKU</th>
+                  <th>Product Details</th>
+                  <th>Owner Seller</th>
+                  <th style={{ textAlign: 'right' }}>Stock Level</th>
+                  <th style={{ textAlign: 'right' }}>Price/Unit</th>
+                  <th style={{ textAlign: 'center' }}>Actions</th>
                 </tr>
-              ) : (
-                orders.map(o => (
-                  <tr key={o.id}>
-                    <td>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>#{o.id.substring(0, 8)}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {new Date(o.createdAt).toLocaleString()}
-                      </div>
+              </thead>
+              <tbody>
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                      No products found.
                     </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{o.user?.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{o.user?.username}</div>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {o.items?.map((item, idx) => (
-                          <div key={item.id} style={{
-                            padding: '0.6rem',
-                            background: '#FFF8F9',
-                            border: '1px solid #FFE3E6',
-                            borderRadius: '6px',
-                            fontSize: '0.85rem'
-                          }}>
-                            {/* Product Name */}
-                            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                              [{item.product?.sku}] {item.product?.name}
-                            </div>
-                            
-                            {/* Conversion Formula */}
-                            <div style={{ display: 'flex', flexDirection: 'column', marginTop: '0.25rem', gap: '0.15rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                              <div>
-                                • Ordered: <strong style={{ color: 'var(--text-main)' }}>{item.orderedQuantity} {item.orderedUnit}</strong>
-                              </div>
-                              {item.orderedUnit !== item.baseUnit && (
-                                <div style={{ color: 'var(--primary)' }}>
-                                  • Conversion: {item.orderedQuantity} {item.orderedUnit} → <strong style={{ fontFamily: 'monospace' }}>{parseFloat(item.convertedQuantity).toFixed(6)} {item.baseUnit}</strong>
-                                </div>
-                              )}
-                              <div>
-                                • Base Rate: ₹{parseFloat(item.pricePerBaseUnit).toFixed(6)} per {item.baseUnit}
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.2rem', paddingTop: '0.2rem', borderTop: '1px dashed #FFCCD2' }}>
-                                <span style={{ fontWeight: 600 }}>Item Total:</span>
-                                <strong style={{ color: 'var(--success)' }}>₹{parseFloat(item.calculatedPrice).toFixed(2)}</strong>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '1.05rem', color: 'var(--primary)', verticalAlign: 'top', paddingTop: '1.5rem' }}>
-                      ₹{parseFloat(o.totalPrice).toFixed(2)}
-                    </td>
-                    <td style={{ verticalAlign: 'top', paddingTop: '1.5rem' }}>
-                      <span className={`badge badge-${o.status.toLowerCase()}`}>
-                        {o.status}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '1.25rem' }}>
-                      {o.status === 'PENDING' && (
-                        <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            style={{ padding: '0.4rem 0.8rem', background: 'var(--success)' }}
-                            onClick={() => handleOrderStatusUpdate(o.id, 'APPROVED')}
-                            title="Approve Order"
-                          >
-                            <Check size={14} />
-                            <span>Approve</span>
-                          </button>
-                          <button
-                            className="btn btn-danger btn-sm"
-                            style={{ padding: '0.4rem 0.8rem' }}
-                            onClick={() => handleOrderStatusUpdate(o.id, 'REJECTED')}
-                            title="Reject Order"
-                          >
-                            <X size={14} />
-                            <span>Reject</span>
-                          </button>
-                        </div>
-                      )}
-                      {o.status === 'APPROVED' && (
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: '0.4rem 0.8rem', color: '#2B6CB0', border: '1px solid #BEE3F8', background: '#EBF8FF' }}
-                          onClick={() => handleOrderStatusUpdate(o.id, 'COMPLETED')}
+                  </tr>
+                ) : (
+                  filteredItems.map(p => (
+                    <tr key={p.id}>
+                      <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{p.sku}</td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{p.name}</div>
+                        {p.category && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{p.category}</div>}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{p.seller?.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{p.seller?.username}</div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>
+                        {parseFloat(p.stockQuantity).toFixed(4)} {p.baseUnit}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: 'var(--success)' }}>
+                        ₹{parseFloat(p.pricePerBaseUnit).toFixed(2)}/{p.baseUnit}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          onClick={() => handleProductDelete(p.id)}
+                          title="Delete Listing"
                         >
-                          <Check size={14} />
-                          <span>Complete</span>
+                          <Trash2 size={14} />
+                          <span>Remove</span>
                         </button>
-                      )}
-                      {(o.status === 'COMPLETED' || o.status === 'REJECTED') && (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Archived</span>
-                      )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {activeTab === 'orders' && (
+            <table className="custom-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Customer Info</th>
+                  <th>Seller Info</th>
+                  <th>Details</th>
+                  <th style={{ textAlign: 'right' }}>Total Price</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                      No orders found.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredItems.map(o => (
+                    <tr key={o.id}>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>#{o.id.substring(0, 8)}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(o.createdAt).toLocaleString()}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{o.user?.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{o.user?.username}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{o.seller?.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{o.seller?.username}</div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          {o.items?.map(item => (
+                            <div key={item.id} style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
+                              • {item.product?.name} ({item.orderedQuantity} {item.orderedUnit})
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--primary)' }}>
+                        ₹{parseFloat(o.totalPrice).toFixed(2)}
+                      </td>
+                      <td>
+                        <span className={`badge badge-${o.status.toLowerCase()}`} style={{ fontSize: '0.75rem' }}>
+                          {o.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </main>
-
-      {/* Product Create/Edit Modal */}
-      {isProductModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem' }}>
-                {editingProduct ? 'Modify Product Details' : 'Add New Product'}
-              </h3>
-              <button className="modal-close" onClick={() => setIsProductModalOpen(false)}>×</button>
-            </div>
-            
-            <form onSubmit={handleProductSubmit}>
-              <div className="form-group">
-                <label className="form-label">SKU (Stock Keeping Unit)</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                  disabled={!!editingProduct}
-                  placeholder="e.g. PAR-RAW-001"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Product Name</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Paracetamol Raw Material"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Description (Optional)</label>
-                <textarea
-                  className="form-control"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Enter details..."
-                  style={{ minHeight: '80px', resize: 'vertical' }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Category</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  placeholder="e.g. API / Raw Material"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Base Quantity Unit</label>
-                <select
-                  className="form-control"
-                  value={baseUnit}
-                  onChange={(e) => setBaseUnit(e.target.value)}
-                  disabled={!!editingProduct}
-                >
-                  <option value="g">Grams (g)</option>
-                  <option value="kg">Kilograms (kg)</option>
-                  <option value="mL">Milliliters (mL)</option>
-                  <option value="L">Liters (L)</option>
-                  <option value="items">Items (unit count)</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Price per Base Unit (₹ INR)</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  min="0.000001"
-                  className="form-control"
-                  value={pricePerBaseUnit}
-                  onChange={(e) => setPricePerBaseUnit(e.target.value)}
-                  placeholder="e.g. 1.500000"
-                  required
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '1.75rem' }}>
-                <label className="form-label">Stock Quantity (in Base Unit)</label>
-                <input
-                  type="number"
-                  step="0.000001"
-                  min="0"
-                  className="form-control"
-                  value={stockQuantity}
-                  onChange={(e) => setStockQuantity(e.target.value)}
-                  placeholder="e.g. 5000.000000"
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => setIsProductModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                >
-                  {editingProduct ? 'Save Changes' : 'Create Product'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

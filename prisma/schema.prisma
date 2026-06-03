@@ -8,13 +8,15 @@ generator client {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  username     String   @unique
-  passwordHash String
-  role         String   // "ADMIN" or "SELLER"
-  name         String
-  createdAt    DateTime @default(now())
-  orders       Order[]
+  id             String    @id @default(uuid())
+  username       String    @unique
+  passwordHash   String
+  role           String    // "ADMIN", "SELLER", or "CUSTOMER"
+  name           String
+  createdAt      DateTime  @default(now())
+  products       Product[] @relation("SellerProducts")
+  customerOrders Order[]   @relation("CustomerOrders")
+  sellerOrders   Order[]   @relation("SellerOrders")
 }
 
 model Product {
@@ -28,13 +30,17 @@ model Product {
   stockQuantity      Decimal     @db.Decimal(20, 6) // Current stock in base unit
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
+  sellerId           String
+  seller             User        @relation("SellerProducts", fields: [sellerId], references: [id], onDelete: Cascade)
   orderItems         OrderItem[]
 }
 
 model Order {
   id         String      @id @default(uuid())
-  userId     String
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String      // Customer placing order
+  user       User        @relation("CustomerOrders", fields: [userId], references: [id], onDelete: Cascade)
+  sellerId   String      // Seller receiving order
+  seller     User        @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade)
   status     String      // "PENDING", "APPROVED", "REJECTED", "COMPLETED"
   totalPrice Decimal     @db.Decimal(20, 2) // Sum of calculated item prices in INR
   createdAt  DateTime    @default(now())

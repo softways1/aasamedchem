@@ -5,67 +5,67 @@ import React, { useState, useEffect } from 'react';
 import { 
   Activity, 
   LogOut, 
-  Search, 
-  Filter, 
-  ShoppingCart, 
+  Plus, 
+  Edit, 
   Trash2, 
   Check, 
-  AlertCircle, 
-  User as UserIcon, 
-  ShoppingBag,
-  Info,
-  Clock
+  X, 
+  RefreshCw, 
+  Search, 
+  Filter, 
+  Package, 
+  DollarSign, 
+  FileText, 
+  User as UserIcon,
+  ShoppingBag
 } from 'lucide-react';
-import { getCompatibleUnits, calculateItemPrice, getUnitDimension } from '@/lib/units';
 
 export default function SellerPage() {
   // Auth state
   const [user, setUser] = useState(null);
-
+  
   // Data state
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter state
+  // Filters state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [categories, setCategories] = useState([]);
 
-  // Active product input states (selection)
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [orderQuantity, setOrderQuantity] = useState('');
-  const [orderUnit, setOrderUnit] = useState('');
+  // Modals state
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null); // null means adding
   
-  // Real-time calculation previews
-  const [previewConvertedQty, setPreviewConvertedQty] = useState(0);
-  const [previewPrice, setPreviewPrice] = useState(0);
-  const [isStockSufficient, setIsStockSufficient] = useState(true);
-
-  // Cart state
-  const [cart, setCart] = useState([]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
-
-  // Status flags
+  // Form fields
+  const [sku, setSku] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [baseUnit, setBaseUnit] = useState('g');
+  const [pricePerBaseUnit, setPricePerBaseUnit] = useState('');
+  const [stockQuantity, setStockQuantity] = useState('');
+  
+  // UI status
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [orderPlacing, setOrderPlacing] = useState(false);
 
   // Fetch initial data
   const checkAuthAndFetchData = async () => {
     try {
       const authRes = await fetch('/api/auth');
       const authData = await authRes.json();
-
+      
       if (!authData.authenticated || authData.user.role !== 'SELLER') {
         window.location.href = '/login';
         return;
       }
-
+      
       setUser(authData.user);
 
-      // Fetch products
-      const prodRes = await fetch('/api/products');
+      // Fetch only own products
+      const prodRes = await fetch('/api/products?own=true');
       const prodData = await prodRes.json();
       setProducts(prodData);
 
@@ -73,7 +73,7 @@ export default function SellerPage() {
       const cats = Array.from(new Set(prodData.map(p => p.category).filter(Boolean)));
       setCategories(cats);
 
-      // Fetch orders
+      // Fetch own incoming orders (backend automatically filters by sellerId)
       const orderRes = await fetch('/api/orders');
       const orderData = await orderRes.json();
       setOrders(orderData);
@@ -89,43 +89,6 @@ export default function SellerPage() {
     checkAuthAndFetchData();
   }, []);
 
-  // Update calculation preview whenever selected product, quantity, or unit changes
-  useEffect(() => {
-    if (!selectedProduct || !orderQuantity || isNaN(parseFloat(orderQuantity))) {
-      setPreviewConvertedQty(0);
-      setPreviewPrice(0);
-      setIsStockSufficient(true);
-      return;
-    }
-
-    const qty = parseFloat(orderQuantity);
-    if (qty <= 0) {
-      setPreviewConvertedQty(0);
-      setPreviewPrice(0);
-      setIsStockSufficient(true);
-      return;
-    }
-
-    try {
-      const calc = calculateItemPrice(
-        qty,
-        orderUnit,
-        selectedProduct.baseUnit,
-        Number(selectedProduct.pricePerBaseUnit)
-      );
-
-      setPreviewConvertedQty(calc.convertedQuantity);
-      setPreviewPrice(calc.totalPrice);
-
-      const availableStock = Number(selectedProduct.stockQuantity);
-      setIsStockSufficient(availableStock >= calc.convertedQuantity);
-    } catch (e) {
-      // Incompatible dimensions
-      setIsStockSufficient(false);
-    }
-
-  }, [selectedProduct, orderQuantity, orderUnit]);
-
   const handleLogout = async () => {
     try {
       await fetch('/api/auth', { method: 'DELETE' });
@@ -135,122 +98,137 @@ export default function SellerPage() {
     }
   };
 
-  const handleSelectProduct = (product) => {
+  const handleOpenProductModal = (product = null) => {
     setErrorMsg('');
     setSuccessMsg('');
-    setSelectedProduct(product);
-    setOrderQuantity('');
-    // Default to the product's base unit
-    setOrderUnit(product.baseUnit);
-  };
-
-  const handleAddToCart = () => {
-    if (!selectedProduct || !orderQuantity || parseFloat(orderQuantity) <= 0) return;
-
-    const qty = parseFloat(orderQuantity);
-    
-    // Perform final check
-    const calc = calculateItemPrice(
-      qty,
-      orderUnit,
-      selectedProduct.baseUnit,
-      Number(selectedProduct.pricePerBaseUnit)
-    );
-
-    const availableStock = Number(selectedProduct.stockQuantity);
-    if (availableStock < calc.convertedQuantity) {
-      setErrorMsg('Insufficient stock to add this item to cart.');
-      return;
-    }
-
-    // Check if product already in cart
-    const existingIndex = cart.findIndex(item => item.product.id === selectedProduct.id);
-    
-    if (existingIndex > -1) {
-      const existingItem = cart[existingIndex];
-      // Note: for simplicity, we overwrite the previous entry. 
-      // You can merge quantities, but units might differ. Overwriting or alerting is safer.
-      const updatedCart = [...cart];
-      updatedCart[existingIndex] = {
-        product: selectedProduct,
-        orderedQuantity: qty,
-        orderedUnit: orderUnit,
-        convertedQuantity: calc.convertedQuantity,
-        calculatedPrice: calc.totalPrice
-      };
-      setCart(updatedCart);
-      setSuccessMsg(`Updated cart item for ${selectedProduct.name}`);
+    if (product) {
+      setEditingProduct(product);
+      setSku(product.sku);
+      setName(product.name);
+      setDescription(product.description || '');
+      setCategory(product.category || '');
+      setBaseUnit(product.baseUnit);
+      setPricePerBaseUnit(product.pricePerBaseUnit.toString());
+      setStockQuantity(product.stockQuantity.toString());
     } else {
-      setCart([
-        ...cart,
-        {
-          product: selectedProduct,
-          orderedQuantity: qty,
-          orderedUnit: orderUnit,
-          convertedQuantity: calc.convertedQuantity,
-          calculatedPrice: calc.totalPrice
-        }
-      ]);
-      setSuccessMsg(`Added ${selectedProduct.name} to cart`);
+      setEditingProduct(null);
+      setSku('');
+      setName('');
+      setDescription('');
+      setCategory('');
+      setBaseUnit('g');
+      setPricePerBaseUnit('');
+      setStockQuantity('');
     }
-
-    // Reset selection
-    setSelectedProduct(null);
-    setOrderQuantity('');
-    setOrderUnit('');
-    setPreviewConvertedQty(0);
-    setPreviewPrice(0);
+    setIsProductModalOpen(true);
   };
 
-  const handleRemoveFromCart = (productId) => {
-    setCart(cart.filter(item => item.product.id !== productId));
-  };
-
-  const handlePlaceOrder = async () => {
-    if (cart.length === 0) return;
+  const handleProductSubmit = async (e) => {
+    e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
-    setOrderPlacing(true);
 
     const payload = {
-      items: cart.map(item => ({
-        productId: item.product.id,
-        orderedQuantity: item.orderedQuantity,
-        orderedUnit: item.orderedUnit
-      }))
+      sku,
+      name,
+      description,
+      category,
+      baseUnit,
+      pricePerBaseUnit: parseFloat(pricePerBaseUnit),
+      stockQuantity: parseFloat(stockQuantity)
     };
 
     try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
+      let res;
+      if (editingProduct) {
+        // Edit product
+        res = await fetch(`/api/products/${editingProduct.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        // Create product
+        res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Operation failed');
+
+      setSuccessMsg(editingProduct ? 'Product updated successfully!' : 'Product listed successfully!');
+      setIsProductModalOpen(false);
+      
+      // Refresh products list
+      const prodRes = await fetch('/api/products?own=true');
+      const prodData = await prodRes.json();
+      setProducts(prodData);
+      
+      // Update categories
+      const cats = Array.from(new Set(prodData.map(p => p.category).filter(Boolean)));
+      setCategories(cats);
+
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleProductDelete = async (productId) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      const res = await fetch(`/api/products/${productId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || 'Failed to delete product');
+
+      setSuccessMsg('Product deleted successfully!');
+      
+      // Refresh products list
+      const prodRes = await fetch('/api/products?own=true');
+      const prodData = await prodRes.json();
+      setProducts(prodData);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleOrderStatusUpdate = async (orderId, newStatus) => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ status: newStatus })
       });
       const data = await res.json();
 
-      if (!res.ok) throw new Error(data.error || 'Failed to place order');
+      if (!res.ok) throw new Error(data.error || 'Failed to update order status');
 
-      setSuccessMsg('Your quotation order has been successfully placed!');
-      setCart([]);
-      setIsCartOpen(false);
+      setSuccessMsg(`Order status updated to ${newStatus}!`);
 
-      // Refresh product stock levels and orders list
-      const prodRes = await fetch('/api/products');
-      const prodData = await prodRes.json();
-      setProducts(prodData);
-
+      // Refresh orders and products
       const orderRes = await fetch('/api/orders');
       const orderData = await orderRes.json();
       setOrders(orderData);
 
+      const prodRes = await fetch('/api/products?own=true');
+      const prodData = await prodRes.json();
+      setProducts(prodData);
     } catch (err) {
       setErrorMsg(err.message);
-    } finally {
-      setOrderPlacing(false);
     }
   };
 
-  // Filtered catalogue
+  // Filtered Products
   const filteredProducts = products.filter(p => {
     const matchesSearch = 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -260,44 +238,30 @@ export default function SellerPage() {
     return matchesSearch && matchesCategory;
   });
 
-  const cartTotal = cart.reduce((acc, item) => acc + item.calculatedPrice, 0);
-
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: '1rem' }}>
         <Activity size={40} className="animate-pulse" style={{ color: 'var(--primary)' }} />
-        <p style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Loading AASAMEDCHEM Seller Panel...</p>
+        <p style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Loading AASAMEDCHEM Seller portal...</p>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: '6rem' }}>
+    <div style={{ minHeight: '100vh', paddingBottom: '4rem' }}>
       {/* Header */}
       <header className="header-glass">
         <div className="container header-container">
           <div className="logo-text">
             <Activity size={28} />
             <span>AASAMEDCHEM</span>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, background: 'var(--primary-light)', color: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '50px', marginLeft: '0.5rem' }}>SELLER GATEWAY</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, background: 'var(--primary-light)', color: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '50px', marginLeft: '0.5rem' }}>SELLER PANEL</span>
           </div>
           <div className="nav-links">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <UserIcon size={18} style={{ color: 'var(--primary)' }} />
               <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user?.name}</span>
             </div>
-            
-            {/* Cart Trigger */}
-            <button 
-              className="btn btn-secondary btn-sm" 
-              style={{ position: 'relative' }}
-              onClick={() => setIsCartOpen(true)}
-            >
-              <ShoppingCart size={16} />
-              <span>Cart</span>
-              {cart.length > 0 && <span className="cart-badge">{cart.length}</span>}
-            </button>
-
             <button className="btn btn-outline btn-sm" onClick={handleLogout}>
               <LogOut size={16} />
               <span>Logout</span>
@@ -310,7 +274,7 @@ export default function SellerPage() {
         {/* Messages */}
         {errorMsg && (
           <div className="alert alert-error fade-in">
-            <AlertCircle size={18} />
+            <X size={18} />
             <span>{errorMsg}</span>
           </div>
         )}
@@ -321,377 +285,401 @@ export default function SellerPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-3" style={{ alignItems: 'flex-start' }}>
-          {/* Catalogue and Order form */}
-          <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            
-            {/* Catalogue search and filters */}
-            <div>
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.25rem' }}>
-                Product Catalogue
-              </h2>
-              
-              <div className="search-container">
-                <div className="search-input-wrapper">
-                  <Search className="search-icon" size={20} />
-                  <input
-                    type="text"
-                    placeholder="Search medicines, API chemicals, SKU code..."
-                    className="form-control search-input"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '0.5rem' }}>
-                  <Filter size={18} style={{ color: 'var(--text-muted)' }} />
-                  <select
-                    className="form-control"
-                    style={{ width: '180px', padding: '0.5rem 1rem' }}
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                  >
-                    <option value="">All Categories</option>
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
+        {/* Dashboard Stat Cards */}
+        <div className="grid grid-cols-4" style={{ marginBottom: '2.5rem' }}>
+          <div className="card fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>My Products</p>
+                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>{products.length}</h3>
               </div>
-
-              {/* Grid Catalogue items */}
-              <div className="grid grid-cols-2">
-                {filteredProducts.length === 0 ? (
-                  <div style={{ gridColumn: 'span 2', textAlign: 'center', padding: '3rem', background: '#fff', borderRadius: 'var(--br-lg)', border: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                    No products found.
-                  </div>
-                ) : (
-                  filteredProducts.map(p => {
-                    const isSelected = selectedProduct?.id === p.id;
-                    const stock = Number(p.stockQuantity);
-                    return (
-                      <div 
-                        key={p.id} 
-                        className={`card fade-in ${isSelected ? 'selected-card' : ''}`}
-                        onClick={() => handleSelectProduct(p)}
-                        style={{
-                          cursor: 'pointer',
-                          border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                          background: stock === 0 ? '#FAF6F7' : 'white'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '0.05em' }}>
-                            {p.sku}
-                          </span>
-                          <span style={{ fontSize: '0.8rem', background: '#F7EFF1', color: 'var(--text-main)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>
-                            {p.category || 'API'}
-                          </span>
-                        </div>
-                        <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '0.25rem', color: 'var(--text-main)' }}>
-                          {p.name}
-                        </h4>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', minHeight: '36px', marginBottom: '1rem' }}>
-                          {p.description || 'No description provided.'}
-                        </p>
-                        
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Stock Available:</div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 700, fontFamily: 'monospace', color: stock === 0 ? 'var(--error)' : 'var(--text-main)' }}>
-                              {stock > 0 ? `${stock.toFixed(4)} ${p.baseUnit}` : 'OUT OF STOCK'}
-                            </div>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Base Rate:</div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--success)' }}>
-                              ₹{Number(p.pricePerBaseUnit).toFixed(2)}/{p.baseUnit}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Order history */}
-            <div>
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Clock size={22} style={{ color: 'var(--primary)' }} />
-                <span>My Quotation History</span>
-              </h2>
-
-              <div className="table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Order ID</th>
-                      <th>Date Placed</th>
-                      <th>Items Ordered</th>
-                      <th style={{ textAlign: 'right' }}>Total Price</th>
-                      <th style={{ textAlign: 'center' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                          You have not placed any orders yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      orders.map(o => (
-                        <tr key={o.id}>
-                          <td style={{ fontWeight: 600, fontSize: '0.85rem' }}>#{o.id.substring(0, 8)}</td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            {new Date(o.createdAt).toLocaleDateString()}
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                              {o.items?.map(item => (
-                                <div key={item.id} style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
-                                  • {item.product?.name} ({item.orderedQuantity} {item.orderedUnit})
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>
-                            ₹{parseFloat(o.totalPrice).toFixed(2)}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <span className={`badge badge-${o.status.toLowerCase()}`} style={{ fontSize: '0.7rem' }}>
-                              {o.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div style={{ background: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--primary)' }}>
+                <Package size={24} />
               </div>
             </div>
           </div>
 
-          {/* Interactive Configurator Column */}
-          <div style={{ position: 'sticky', top: '100px' }}>
-            {selectedProduct ? (
-              <div className="card fade-in" style={{ border: '2px solid var(--primary-border)', background: 'white' }}>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.25rem', color: 'var(--text-main)' }}>
-                  Configure Quantity
+          <div className="card fade-in" style={{ animationDelay: '0.1s' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Pending Orders</p>
+                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)', color: 'var(--warning)' }}>
+                  {orders.filter(o => o.status === 'PENDING').length}
                 </h3>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-                  Select order unit and input quantities.
-                </p>
-
-                <div style={{ padding: '0.85rem', background: 'var(--bg-primary)', borderRadius: 'var(--br-md)', border: '1px dashed var(--primary-border)', marginBottom: '1.25rem' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>SELECTED PRODUCT:</div>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)', marginTop: '0.15rem' }}>{selectedProduct.name}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '0.5rem', color: 'var(--text-muted)' }}>
-                    <span>SKU: <strong>{selectedProduct.sku}</strong></span>
-                    <span>Available: <strong>{Number(selectedProduct.stockQuantity).toFixed(4)} {selectedProduct.baseUnit}</strong></span>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Order Unit</label>
-                  <select
-                    className="form-control"
-                    value={orderUnit}
-                    onChange={(e) => setOrderUnit(e.target.value)}
-                  >
-                    {getCompatibleUnits(selectedProduct.baseUnit).map(u => (
-                      <option key={u} value={u}>
-                        {u === 'items' ? 'Items (count)' : u}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-                  <label className="form-label">Quantity</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    min="0.0001"
-                    placeholder="Enter quantity..."
-                    className="form-control"
-                    value={orderQuantity}
-                    onChange={(e) => setOrderQuantity(e.target.value)}
-                  />
-                </div>
-
-                {/* Calculation breakdown to prove conversion checks */}
-                {previewConvertedQty > 0 && (
-                  <div style={{
-                    padding: '1rem',
-                    background: '#FFF8F9',
-                    border: '1px solid #FFE3E6',
-                    borderRadius: 'var(--br-md)',
-                    marginBottom: '1.5rem',
-                    fontSize: '0.85rem'
-                  }}>
-                    <h4 style={{ fontSize: '0.9rem', color: 'var(--primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <Info size={16} />
-                      <span>Conversion & Pricing Audit</span>
-                    </h4>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Requested qty:</span>
-                        <strong style={{ color: 'var(--text-main)' }}>{orderQuantity} {orderUnit}</strong>
-                      </div>
-                      
-                      {orderUnit !== selectedProduct.baseUnit && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--primary)' }}>
-                          <span>Conversion to base:</span>
-                          <strong>{previewConvertedQty.toFixed(6)} {selectedProduct.baseUnit}</strong>
-                        </div>
-                      )}
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Rate per base unit:</span>
-                        <strong style={{ color: 'var(--text-main)' }}>₹{Number(selectedProduct.pricePerBaseUnit).toFixed(4)}/{selectedProduct.baseUnit}</strong>
-                      </div>
-
-                      <div style={{ borderTop: '1px dashed #FFCCD2', marginTop: '0.5rem', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem' }}>
-                        <span style={{ fontWeight: 700 }}>Total (INR):</span>
-                        <strong style={{ color: 'var(--success)', fontSize: '1.05rem' }}>₹{previewPrice.toFixed(2)}</strong>
-                      </div>
-                    </div>
-
-                    {!isStockSufficient && (
-                      <div style={{ display: 'flex', gap: '0.35rem', color: 'var(--error)', marginTop: '0.75rem', fontWeight: 600 }}>
-                        <AlertCircle size={16} />
-                        <span>Insufficient stock in inventory!</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    className="btn btn-outline"
-                    style={{ flex: 1 }}
-                    onClick={() => setSelectedProduct(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    style={{ flex: 2 }}
-                    disabled={!isStockSufficient || !orderQuantity || parseFloat(orderQuantity) <= 0}
-                    onClick={handleAddToCart}
-                  >
-                    Add to Cart
-                  </button>
-                </div>
               </div>
-            ) : (
-              <div className="card fade-in" style={{ textAlign: 'center', padding: '3rem', border: '1px dashed var(--primary-border)', background: '#FFFDFD' }}>
-                <div style={{ color: 'var(--primary)', marginBottom: '1rem', display: 'inline-flex', background: 'var(--primary-light)', padding: '0.75rem', borderRadius: '50%' }}>
-                  <ShoppingBag size={24} />
-                </div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-                  No Product Selected
+              <div style={{ background: 'var(--warning-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--warning)' }}>
+                <RefreshCw size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card fade-in" style={{ animationDelay: '0.2s' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Completed Orders</p>
+                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)', color: 'var(--success)' }}>
+                  {orders.filter(o => o.status === 'COMPLETED').length}
                 </h3>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  Click on a product card from the catalogue to configure your order quantity and units.
-                </p>
               </div>
-            )}
+              <div style={{ background: 'var(--success-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--success)' }}>
+                <ShoppingBag size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card fade-in" style={{ animationDelay: '0.3s' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>My Earnings</p>
+                <h3 style={{ fontSize: '1.8rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>
+                  ₹{orders.filter(o => o.status !== 'REJECTED').reduce((acc, curr) => acc + parseFloat(curr.totalPrice), 0).toFixed(2)}
+                </h3>
+              </div>
+              <div style={{ background: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--primary)' }}>
+                <DollarSign size={24} />
+              </div>
+            </div>
           </div>
         </div>
-      </main>
 
-      {/* Floating Cart Drawer overlay */}
-      {isCartOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px' }}>
-            <div className="modal-header">
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ShoppingCart size={22} style={{ color: 'var(--primary)' }} />
-                <span>My Ordering Cart</span>
-              </h3>
-              <button className="modal-close" onClick={() => setIsCartOpen(false)}>×</button>
-            </div>
+        {/* Section Tabs / Headers */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700 }}>
+            My Listed Products
+          </h2>
+          <button className="btn btn-primary" onClick={() => handleOpenProductModal()}>
+            <Plus size={18} />
+            <span>List New Product</span>
+          </button>
+        </div>
 
-            {cart.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                Your cart is empty. Select products from the list to start.
-              </div>
-            ) : (
-              <div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '350px', overflowY: 'auto', marginBottom: '1.5rem', paddingRight: '0.25rem' }}>
-                  {cart.map(item => (
-                    <div key={item.product.id} style={{
-                      padding: '1rem',
-                      background: '#FFF8F9',
-                      border: '1px solid #FFE3E6',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>{item.product.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                          SKU: {item.product.sku} | Quantity: <strong style={{ color: 'var(--text-main)' }}>{item.orderedQuantity} {item.orderedUnit}</strong>
-                        </div>
-                        {item.orderedUnit !== item.product.baseUnit && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600, marginTop: '0.15rem' }}>
-                            Converts to: {item.convertedQuantity.toFixed(4)} {item.product.baseUnit}
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Total Price</span>
-                          <strong style={{ color: 'var(--success)', fontFamily: 'monospace', fontSize: '1rem' }}>₹{item.calculatedPrice.toFixed(2)}</strong>
-                        </div>
-                        <button
-                          className="btn btn-danger btn-sm"
-                          style={{ padding: '0.35rem', borderRadius: '4px' }}
-                          onClick={() => handleRemoveFromCart(item.product.id)}
-                        >
+        {/* Search & Filter Controls */}
+        <div className="search-container">
+          <div className="search-input-wrapper">
+            <Search className="search-icon" size={20} />
+            <input
+              type="text"
+              placeholder="Search by SKU, Product Name, Category..."
+              className="form-control search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '0.5rem' }}>
+            <Filter size={18} style={{ color: 'var(--text-muted)' }} />
+            <select
+              className="form-control"
+              style={{ width: '180px', padding: '0.5rem 1rem' }}
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+            >
+              <option value="">All Categories</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Inventory Table */}
+        <div className="table-container fade-in">
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Product Name</th>
+                <th>Category</th>
+                <th>Base Unit</th>
+                <th style={{ textAlign: 'right' }}>Stock Level</th>
+                <th style={{ textAlign: 'right' }}>Price / Base Unit</th>
+                <th style={{ textAlign: 'center' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProducts.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    No listed products found. Click "List New Product" to start selling.
+                  </td>
+                </tr>
+              ) : (
+                filteredProducts.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{p.sku}</td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{p.name}</div>
+                      {p.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{p.description}</div>}
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '0.85rem', background: '#F8F9FA', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #E9ECEF' }}>
+                        {p.category || 'N/A'}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 600, textTransform: 'lowercase' }}>{p.baseUnit}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>
+                      {parseFloat(p.stockQuantity).toFixed(6)}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: 'var(--success)' }}>
+                      ₹{parseFloat(p.pricePerBaseUnit).toFixed(6)}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleOpenProductModal(p)} title="Edit">
+                          <Edit size={14} />
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleProductDelete(p.id)} title="Delete">
                           <Trash2 size={14} />
                         </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                <div style={{
-                  borderTop: '1px solid var(--border-color)',
-                  paddingTop: '1rem',
-                  marginBottom: '1.5rem',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Total Cart Value:</span>
-                  <strong style={{ fontSize: '1.5rem', fontFamily: 'var(--font-display)', color: 'var(--primary)' }}>₹{cartTotal.toFixed(2)}</strong>
-                </div>
+        {/* Incoming Orders Section */}
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.25rem', marginTop: '3rem' }}>
+          Incoming Customer Orders
+        </h2>
 
-                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    onClick={() => setIsCartOpen(false)}
-                  >
-                    Continue Shopping
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={orderPlacing}
-                    onClick={handlePlaceOrder}
-                  >
-                    {orderPlacing ? 'Placing Quotation...' : 'Place Quotation Order'}
-                  </button>
-                </div>
+        {/* Orders Table */}
+        <div className="table-container fade-in">
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Order Details</th>
+                <th>Customer Info</th>
+                <th>Ordered Items</th>
+                <th style={{ textAlign: 'right' }}>Total Value</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'center' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    No incoming customer orders yet.
+                  </td>
+                </tr>
+              ) : (
+                orders.map(o => (
+                  <tr key={o.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>#{o.id.substring(0, 8)}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {new Date(o.createdAt).toLocaleString()}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{o.user?.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>@{o.user?.username}</div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {o.items?.map((item) => (
+                          <div key={item.id} style={{
+                            padding: '0.6rem',
+                            background: '#FFF8F9',
+                            border: '1px solid #FFE3E6',
+                            borderRadius: '6px',
+                            fontSize: '0.85rem'
+                          }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                              [{item.product?.sku}] {item.product?.name}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', marginTop: '0.25rem', gap: '0.15rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                              <div>
+                                • Ordered: <strong style={{ color: 'var(--text-main)' }}>{item.orderedQuantity} {item.orderedUnit}</strong>
+                              </div>
+                              {item.orderedUnit !== item.baseUnit && (
+                                <div style={{ color: 'var(--primary)' }}>
+                                  • Conversion: {item.orderedQuantity} {item.orderedUnit} → <strong style={{ fontFamily: 'monospace' }}>{parseFloat(item.convertedQuantity).toFixed(6)} {item.baseUnit}</strong>
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.2rem', paddingTop: '0.2rem', borderTop: '1px dashed #FFCCD2' }}>
+                                <span>Total Price:</span>
+                                <strong style={{ color: 'var(--success)' }}>₹{parseFloat(item.calculatedPrice).toFixed(2)}</strong>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '1.05rem', color: 'var(--primary)', verticalAlign: 'top', paddingTop: '1.5rem' }}>
+                      ₹{parseFloat(o.totalPrice).toFixed(2)}
+                    </td>
+                    <td style={{ verticalAlign: 'top', paddingTop: '1.5rem' }}>
+                      <span className={`badge badge-${o.status.toLowerCase()}`}>
+                        {o.status}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '1.25rem' }}>
+                      {o.status === 'PENDING' && (
+                        <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            style={{ padding: '0.4rem 0.8rem', background: 'var(--success)' }}
+                            onClick={() => handleOrderStatusUpdate(o.id, 'APPROVED')}
+                            title="Approve Order"
+                          >
+                            <Check size={14} />
+                            <span>Approve</span>
+                          </button>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            style={{ padding: '0.4rem 0.8rem' }}
+                            onClick={() => handleOrderStatusUpdate(o.id, 'REJECTED')}
+                            title="Reject Order"
+                          >
+                            <X size={14} />
+                            <span>Reject</span>
+                          </button>
+                        </div>
+                      )}
+                      {o.status === 'APPROVED' && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '0.4rem 0.8rem', color: '#2B6CB0', border: '1px solid #BEE3F8', background: '#EBF8FF' }}
+                          onClick={() => handleOrderStatusUpdate(o.id, 'COMPLETED')}
+                        >
+                          <Check size={14} />
+                          <span>Complete</span>
+                        </button>
+                      )}
+                      {(o.status === 'COMPLETED' || o.status === 'REJECTED') && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Archived</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </main>
+
+      {/* Product Create/Edit Modal */}
+      {isProductModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem' }}>
+                {editingProduct ? 'Modify Product Details' : 'List New Product'}
+              </h3>
+              <button className="modal-close" onClick={() => setIsProductModalOpen(false)}>×</button>
+            </div>
+            
+            <form onSubmit={handleProductSubmit}>
+              <div className="form-group">
+                <label className="form-label">SKU (Stock Keeping Unit)</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  disabled={!!editingProduct}
+                  placeholder="e.g. PAR-RAW-001"
+                  required
+                />
               </div>
-            )}
+
+              <div className="form-group">
+                <label className="form-label">Product Name</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Paracetamol Raw Material"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Description (Optional)</label>
+                <textarea
+                  className="form-control"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Enter details..."
+                  style={{ minHeight: '80px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Category</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="e.g. API / Raw Material"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Base Quantity Unit</label>
+                <select
+                  className="form-control"
+                  value={baseUnit}
+                  onChange={(e) => setBaseUnit(e.target.value)}
+                  disabled={!!editingProduct}
+                >
+                  <option value="g">Grams (g)</option>
+                  <option value="kg">Kilograms (kg)</option>
+                  <option value="mL">Milliliters (mL)</option>
+                  <option value="L">Liters (L)</option>
+                  <option value="items">Items (unit count)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Price per Base Unit (₹ INR)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  min="0.000001"
+                  className="form-control"
+                  value={pricePerBaseUnit}
+                  onChange={(e) => setPricePerBaseUnit(e.target.value)}
+                  placeholder="e.g. 1.500000"
+                  required
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.75rem' }}>
+                <label className="form-label">Stock Quantity (in Base Unit)</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  min="0"
+                  className="form-control"
+                  value={stockQuantity}
+                  onChange={(e) => setStockQuantity(e.target.value)}
+                  placeholder="e.g. 5000.000000"
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setIsProductModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                >
+                  {editingProduct ? 'Save Changes' : 'List Product'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
