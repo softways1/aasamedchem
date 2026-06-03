@@ -197,7 +197,7 @@ export default function AdminPage() {
           <div className="nav-links">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <UserIcon size={18} style={{ color: 'var(--primary)' }} />
-              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user?.name}</span>
+              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>ASSAMEDCHEM Admin Panel</span>
             </div>
             <button className="btn btn-outline btn-sm" onClick={handleLogout}>
               <LogOut size={16} />
@@ -227,8 +227,10 @@ export default function AdminPage() {
           <div className="card fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Total Users</p>
-                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>{usersList.length}</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase' }}>Marketplace Users</p>
+                <h3 style={{ fontSize: '2rem', marginTop: '0.5rem', fontFamily: 'var(--font-display)' }}>
+                  {usersList.filter(u => u.role !== 'ADMIN').length}
+                </h3>
               </div>
               <div style={{ background: 'var(--primary-light)', padding: '0.75rem', borderRadius: 'var(--br-md)', color: 'var(--primary)' }}>
                 <UsersIcon size={24} />

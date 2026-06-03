@@ -14,7 +14,7 @@ async function seed() {
       username: 'admin',
       passwordHash: adminPasswordHash,
       role: 'ADMIN',
-      name: 'Dr. Sarah (Admin)'
+      name: 'ASSAMEDCHEM Admin Panel'
     }
   });
   console.log(`✓ Admin user seeded: ${admin.username}`);
