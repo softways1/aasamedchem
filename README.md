@@ -1,119 +1,109 @@
-# AASAMEDCHEM - Pharma Inventory & Order Management System
+# AASAMEDCHEM - Pharma B2B/B2C Marketplace & Order Management System
 
-AASAMEDCHEM is a professional, high-precision inventory and order management web application designed for a pharmaceutical company. Built with **Next.js**, **Neon-hosted PostgreSQL**, and **Prisma ORM**, it features a clean, responsive, and beautiful **light pink** design system themed specifically for medical/pharma branding.
+AASAMEDCHEM is a professional, high-precision B2B/B2C inventory and multi-seller order management system built for the pharmaceutical industry. The system supports robust unit conversions, secure transactional inventory locks, automated multi-seller checkout splitting, and real-time delisting notifications. 
 
-## 🌟 Live Demo
-The application is ready for deployment on Vercel. 
+The application is styled with a premium, responsive **light pink** medical design theme.
+
+---
+
+## 🌟 Live Demo & Deployment
 * **Live Deployment URL**: [https://aasamedchem.vercel.app](https://aasamedchem.vercel.app) *(or your deployed Vercel URL)*
 
 ---
 
-## 🛠️ Tech Stack & System Design
+## 🔑 Test Credentials for Evaluation
+You can type these credentials or use the **Quick Fill** buttons on the login page:
+
+* **Admin User**:
+  * Username: `admin`
+  * Password: `admin123`
+* **Seller User**:
+  * Username: `seller`
+  * Password: `seller123`
+* **Customer User**:
+  * Username: `aman`
+  * Password: `aman123`
+
+---
+
+## 🛠️ Tech Stack & System Architecture
 
 ```mermaid
 graph TD
-  User[Seller / Admin Browser] -->|HTTP / JSON Requests| NextJS[Next.js App Router Frontend & API Routes]
-  NextJS -->|Session cookie check| Auth[Auth Middleware]
-  NextJS -->|Prisma Client / TCP Connection| Neon[Neon PostgreSQL DB]
+  Customer[Customer Portal] -->|Place Orders| API_Orders[Orders API Route]
+  Seller[Seller Dashboard] -->|List/Manage Products| API_Products[Products API Route]
+  Admin[Admin Panel] -->|Moderate Users & Listings| API_Moderation[Users & Products API]
+  
+  API_Orders -->|Transaction Lock & Split| DB[(Neon Serverless PostgreSQL)]
+  API_Products -->|Scope to Seller| DB
+  API_Moderation -->|Delist Trigger| DB
+  API_Moderation -->|Delist Alert| Notif[Notifications API]
+  Notif -->|Real-Time Warnings| Seller
 ```
 
 ### High-Level Architecture
-1. **Frontend**: Built using Next.js client-side React components styled with premium **Vanilla CSS**. Uses dynamic state hooks to calculate unit conversions and order previews instantly in the browser.
-2. **Backend**: Next.js App Router Server APIs (`/api/*`) handle user authentication (secure HttpOnly cookies), product CRUD, order placement inside a database transaction, and order approval/rejection auditing.
-3. **Database**: Hosted on **Neon Serverless PostgreSQL**. **Prisma ORM** is used for schema mapping, queries, and type safety.
+1. **Frontend**: Built using Next.js client-side React components styled with premium **Vanilla CSS**. Features responsive, modern layouts with glassmorphic cards, alerts, and custom-themed scrollbars.
+2. **Backend**: Next.js App Router Server APIs handle session token verification (using HMAC-SHA256 crypto cookies), product list management, order checkouts, and system notifications.
+3. **Database**: Hosted on **Neon Serverless PostgreSQL**. **Prisma ORM** is used for schema structure, relations, and transactional database queries.
+
+---
+
+## 👥 Multi-Role Interactions
+
+### 1. Admin Panel (`/admin`)
+* **Platform Overview**: Displays statistics for Marketplace Users, active listings, total orders, and Gross Merchandise Value (GMV).
+* **User Moderation**: Lists all registered customers and sellers with the option to delete accounts.
+* **Product Moderation**: Inspects all active listings across the platform. Admins can delete any product not found genuine. Deleting a product automatically logs a system warning for the seller.
+* **Order Monitoring**: Tracks every order placed on the platform.
+
+### 2. Seller Panel (`/seller`)
+* **Inventory Management**: Sellers can list, edit, or remove their own products, configure base price rates, and manage stock quantities.
+* **Fulfillment Management**: Receives incoming orders placed for their products, allowing sellers to Approve, Reject, or Complete them.
+* **System Alerts**: Displays a warning banner at the top of the dashboard containing real-time notifications if any of their products have been delisted by the Admin.
+
+### 3. Customer Portal (`/customer`)
+* **Marketplace Catalog**: Customers browse items listed by all sellers, showing tags like `"Sold by: Rohan Sharma"`.
+* **Configurator**: Selects compatible ordering units (e.g. grams vs. kilograms) with real-time conversion previews, price calculations, and stock checks.
+* **Multi-Seller Checkout**: When checking out a cart containing items from multiple sellers, the backend transaction split-groups the items by `sellerId`, creating distinct orders per seller.
+* **Purchase History**: Tracks the approval and completion status of their orders.
 
 ---
 
 ## 📊 Database Schema & Key Tables
 
-To handle high pharmaceutical measurements (e.g. milligrams of powder, milliliters of liquid, or precise batch counts) and avoid floating-point rounding errors, the database uses PostgreSQL's native `NUMERIC` data type.
+```mermaid
+erDiagram
+    User ||--o{ Product : "lists"
+    User ||--o{ Order : "places (Customer) / receives (Seller)"
+    User ||--o{ Notification : "receives"
+    Order ||--|{ OrderItem : "contains"
+    Product ||--o{ OrderItem : "ordered in"
+```
 
-| Field Name | PostgreSQL Type | Prisma Type | Description |
-| :--- | :--- | :--- | :--- |
-| `Product.pricePerBaseUnit` | `NUMERIC(20, 6)` | `Decimal` | Base price in INR (e.g., ₹1.500000 per gram) |
-| `Product.stockQuantity` | `NUMERIC(20, 6)` | `Decimal` | Current stock level (e.g., 25.500000 kg) |
-| `OrderItem.orderedQuantity` | `NUMERIC(20, 6)` | `Decimal` | Original quantity requested |
-| `OrderItem.convertedQuantity` | `NUMERIC(20, 6)` | `Decimal` | Equivalent quantity converted to base unit |
-| `OrderItem.calculatedPrice` | `NUMERIC(20, 2)` | `Decimal` | Calculated item cost in INR |
-
-### Tables Structure
-
-#### 1. `User` (Accounts)
-* `id` (`UUID`, Primary Key)
-* `username` (`VARCHAR`, Unique) - Account identifier
-* `passwordHash` (`VARCHAR`) - SHA-256 secure hash
-* `role` (`VARCHAR`) - Either `ADMIN` or `SELLER`
-* `name` (`VARCHAR`) - Profile display name
-
-#### 2. `Product` (Inventory Items)
-* `id` (`UUID`, Primary Key)
-* `sku` (`VARCHAR`, Unique) - Stock Keeping Unit code
-* `name` (`VARCHAR`) - Product name
-* `description` (`TEXT`, Nullable)
-* `category` (`VARCHAR`, Nullable)
-* `baseUnit` (`VARCHAR`) - Internal inventory storage unit (`g`, `kg`, `mL`, `L`, `items`)
-* `pricePerBaseUnit` (`NUMERIC(20, 6)`) - Base rate in INR
-* `stockQuantity` (`NUMERIC(20, 6)`) - Available stock in base unit
-
-#### 3. `Order` (Quotations)
-* `id` (`UUID`, Primary Key)
-* `userId` (`UUID`, Foreign Key) - Associated seller user
-* `status` (`VARCHAR`) - `PENDING`, `APPROVED`, `REJECTED`, `COMPLETED`
-* `totalPrice` (`NUMERIC(20, 2)`) - Sum total in INR
-
-#### 4. `OrderItem` (Order Lines)
-* `id` (`UUID`, Primary Key)
-* `orderId` (`UUID`, Foreign Key) - Associated order
-* `productId` (`UUID`, Foreign Key) - Associated product
-* `orderedQuantity` (`NUMERIC(20, 6)`) - Original quantity input
-* `orderedUnit` (`VARCHAR`) - Unit chosen by seller
-* `convertedQuantity` (`NUMERIC(20, 6)`) - Converted stock deduction in base unit
-* `baseUnit` (`VARCHAR`) - Product base unit at order time
-* `pricePerBaseUnit` (`NUMERIC(20, 6)`) - Rate per base unit at order time
-* `calculatedPrice` (`NUMERIC(20, 2)`) - Price in INR for this line item
+1. **`User` (Accounts)**: Stores credentials (hashed using SHA-256), names, and roles (`ADMIN`, `SELLER`, `CUSTOMER`).
+2. **`Product` (Inventory Items)**: Stores SKU codes, descriptions, prices, categories, stocks in base units, and links to the owner (`sellerId`).
+3. **`Order` (Quotations)**: Tracks orders placed by a Customer (`userId`) to a specific Seller (`sellerId`) with statuses (`PENDING`, `APPROVED`, `REJECTED`, `COMPLETED`).
+4. **`OrderItem` (Order Lines)**: Records ordered quantities/units, conversion metrics, base units, rates, and final item price at checkout time.
+5. **`Notification` (System Alerts)**: Stores warnings for sellers when items are delisted by the Admin.
 
 ---
 
 ## ⚖️ Unit Storage & Conversion Strategy
+To support high-precision medical measurements (e.g. milligrams of powder, milliliters of liquid, or precise batch counts) and avoid floating-point rounding errors, the database uses PostgreSQL's native `NUMERIC` data type.
 
-### 1. Dimension Definitions
-We categorize units into three physical dimensions:
-* **Mass**: Grams (`g`), Kilograms (`kg`) [Conversion factor relative to `g`: `1 kg = 1000 g`]
-* **Volume**: Milliliters (`mL`), Liters (`L`) [Conversion factor relative to `mL`: `1 L = 1000 mL`]
-* **Count**: Items (`items`) [Conversion factor: `1 item = 1 item`]
-
-### 2. Storage Strategy
-* Inventory level (`stockQuantity`) and prices (`pricePerBaseUnit`) are stored **strictly in the product's configured base unit**. E.g. if the base unit is `g`, stock is stored in grams, and price is per gram.
-* This removes ambiguity as there is always exactly **one single source of truth** for each product's base weight or volume.
-
-### 3. Application of Conversions
-Conversions are applied in two distinct layers:
-* **Client View Preview (Real-time)**: When a seller inputs a quantity and selects a unit (e.g. `g` or `kg`), the client-side calculator imports the shared `units.js` conversion library and immediately renders:
-  1. The equivalent quantity in the product's base unit.
-  2. The total calculated cost in INR.
-  3. A stock validation check.
-* **Server Verification & Transaction (API)**: When the order is submitted, the API route performs the exact same mathematical conversion inside a **database transaction** (`db.$transaction`). It locks the stock, verifies availability, deducts stock in the base unit, and writes the conversion details to the `OrderItem` audit trail.
-
----
-
-## 🔑 Login & Test Credentials
-
-You can use the **Quick Fill** buttons on the Login page to fill these credentials automatically, or type them:
-
-* **Admin User**:
-  * Username: `admin`
-  * Password: `admin123`
-* **Seller/User**:
-  * Username: `seller`
-  * Password: `seller123`
+1. **Strict Base Unit Storage**: Inventory levels (`stockQuantity`) and prices (`pricePerBaseUnit`) are stored **strictly in the product's configured base unit**. E.g., if the base unit is `g`, stock is stored in grams, and price is per gram.
+2. **Dimensions & Conversions**:
+   * **Mass**: Grams (`g`), Kilograms (`kg`) [1 kg = 1000 g]
+   * **Volume**: Milliliters (`mL`), Liters (`L`) [1 L = 1000 mL]
+   * **Count**: Items (`items`) [1 item = 1 item]
+3. **Transactions**: The API routes verify stock sufficiency in the product's base unit. If stock is available, it decrements the stock inside a `db.$transaction` database lock. If an order is rejected, the stock is automatically restored.
 
 ---
 
 ## 🚀 Setup Instructions (Local Execution)
 
-### 1. Clone & Install Dependencies
+### 1. Install Dependencies
 ```bash
-# Install dependencies
 npm install
 ```
 
@@ -125,10 +115,9 @@ SESSION_SECRET="aasamedchem_super_secret_session_token_key_12345"
 ```
 
 ### 3. Setup Database Schema & Seed Data
-Initialize your PostgreSQL database and seed sample products:
 ```bash
 # Push schema structure to Neon PostgreSQL
-npx prisma db push
+npx prisma db push --force-reset
 
 # Seed users and sample products
 node prisma/seed.js
@@ -142,7 +131,7 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### 5. Run Unit Tests
-To verify unit conversions:
+To verify unit conversions and calculations:
 ```bash
 node src/lib/__tests__/units.test.js
 ```
@@ -151,7 +140,7 @@ node src/lib/__tests__/units.test.js
 
 ## ☁️ Deployment to Vercel
 
-The application is fully compatible with Vercel serverless functions:
+The application is fully configured and ready for serverless deployments on Vercel:
 
 1. **Push your code to GitHub**:
    ```bash
@@ -160,8 +149,9 @@ The application is fully compatible with Vercel serverless functions:
    git commit -m "feat: initial implementation of AASAMEDCHEM"
    ```
 2. **Deploy on Vercel**:
-   * Go to [vercel.com](https://vercel.com) and import your repository.
-   * Add the following **Environment Variables** in the Vercel dashboard:
+   * Log into [vercel.com](https://vercel.com) and import your repository.
+   * Add the following **Environment Variables** in the Vercel project settings:
      * `DATABASE_URL`: `postgresql://neondb_owner:npg_0YDdju7ovNcZ@ep-bitter-poetry-aqmxo0y5.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require`
      * `SESSION_SECRET`: `aasamedchem_super_secret_session_token_key_12345`
-   * Click **Deploy**. Vercel will build the optimized production bundle and supply a live URL!
+   * Click **Deploy**. Vercel will compile the Next.js production build and supply a live URL!
+
