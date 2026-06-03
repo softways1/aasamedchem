@@ -91,6 +91,16 @@ export async function DELETE(request, { params }) {
       }, { status: 400 });
     }
 
+    // Create a notification for the Seller if deleted by Admin (and not deleting their own)
+    if (session.role === 'ADMIN' && product.sellerId !== session.userId) {
+      await db.notification.create({
+        data: {
+          userId: product.sellerId,
+          message: `Your product [${product.sku}] "${product.name}" was delisted by the Admin as it was not verified or found genuine.`
+        }
+      });
+    }
+
     await db.product.delete({
       where: { id }
     });

@@ -17,6 +17,7 @@ model User {
   products       Product[] @relation("SellerProducts")
   customerOrders Order[]   @relation("CustomerOrders")
   sellerOrders   Order[]   @relation("SellerOrders")
+  notifications  Notification[]
 }
 
 model Product {
@@ -61,4 +62,13 @@ model OrderItem {
   pricePerBaseUnit  Decimal  @db.Decimal(20, 6) // Price per base unit at time of ordering
   calculatedPrice   Decimal  @db.Decimal(20, 2) // Final price in INR for this line item
   createdAt         DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

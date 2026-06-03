@@ -17,7 +17,9 @@ import {
   DollarSign, 
   FileText, 
   User as UserIcon,
-  ShoppingBag
+  ShoppingBag,
+  Bell,
+  AlertCircle
 } from 'lucide-react';
 
 export default function SellerPage() {
@@ -27,6 +29,7 @@ export default function SellerPage() {
   // Data state
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Filters state
@@ -78,6 +81,11 @@ export default function SellerPage() {
       const orderData = await orderRes.json();
       setOrders(orderData);
 
+      // Fetch notifications
+      const notifRes = await fetch('/api/notifications');
+      const notifData = await notifRes.json();
+      setNotifications(notifData);
+
     } catch (err) {
       setErrorMsg('Failed to load dashboard data: ' + err.message);
     } finally {
@@ -95,6 +103,17 @@ export default function SellerPage() {
       window.location.href = '/login';
     } catch (err) {
       setErrorMsg('Logout failed');
+    }
+  };
+
+  const handleMarkNotificationsRead = async () => {
+    try {
+      const res = await fetch('/api/notifications', { method: 'PUT' });
+      if (res.ok) {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -282,6 +301,46 @@ export default function SellerPage() {
           <div className="alert alert-success fade-in">
             <Check size={18} />
             <span>{successMsg}</span>
+          </div>
+        )}
+
+        {/* Notifications Alert Banner */}
+        {notifications.filter(n => !n.read).length > 0 && (
+          <div className="card fade-in" style={{
+            background: 'var(--warning-light)',
+            border: '1px solid rgba(255, 168, 1, 0.3)',
+            padding: '1.25rem',
+            borderRadius: 'var(--br-md)',
+            marginBottom: '2rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+            transform: 'none',
+            boxShadow: 'none'
+          }}>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <Bell size={24} style={{ color: 'var(--warning)', flexShrink: 0 }} />
+              <div>
+                <h4 style={{ color: 'var(--text-main)', fontSize: '0.95rem', fontWeight: 700 }}>
+                  Product Delisting Notifications
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+                  {notifications.filter(n => !n.read).map(n => (
+                    <p key={n.id} style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>
+                      • {n.message}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              style={{ background: 'white', borderColor: 'var(--primary-border)', color: 'var(--primary)', flexShrink: 0 }}
+              onClick={handleMarkNotificationsRead}
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
