@@ -1,0 +1,58 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  role         String   // "ADMIN" or "SELLER"
+  name         String
+  createdAt    DateTime @default(now())
+  orders       Order[]
+}
+
+model Product {
+  id                 String      @id @default(uuid())
+  sku                String      @unique
+  name               String
+  description        String?
+  category           String?
+  baseUnit           String      // "g", "kg", "mL", "L", "items"
+  pricePerBaseUnit   Decimal     @db.Decimal(20, 6) // Price for one unit of the base unit
+  stockQuantity      Decimal     @db.Decimal(20, 6) // Current stock in base unit
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  orderItems         OrderItem[]
+}
+
+model Order {
+  id         String      @id @default(uuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status     String      // "PENDING", "APPROVED", "REJECTED", "COMPLETED"
+  totalPrice Decimal     @db.Decimal(20, 2) // Sum of calculated item prices in INR
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  items      OrderItem[]
+}
+
+model OrderItem {
+  id                String   @id @default(uuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orderedQuantity   Decimal  @db.Decimal(20, 6) // Quantity input by user
+  orderedUnit       String   // Unit chosen by user (e.g., kg, L, mL, items)
+  convertedQuantity Decimal  @db.Decimal(20, 6) // Converted to product's base unit
+  baseUnit          String   // Base unit at time of ordering
+  pricePerBaseUnit  Decimal  @db.Decimal(20, 6) // Price per base unit at time of ordering
+  calculatedPrice   Decimal  @db.Decimal(20, 2) // Final price in INR for this line item
+  createdAt         DateTime @default(now())
+}
