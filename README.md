@@ -7,7 +7,7 @@ The application is styled with a premium, responsive **light pink** medical desi
 ---
 
 ## 🌟 Live Demo & Deployment
-* **Live Deployment URL**: [https://aasamedchem.vercel.app](https://aasamedchem.vercel.app) *(or your deployed Vercel URL)*
+* **Live Deployment URL**: [https://aasamedchem-phi.vercel.app/login](https://aasamedchem-phi.vercel.app/login)
 
 ---
 

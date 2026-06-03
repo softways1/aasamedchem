@@ -2,6 +2,12 @@
 
 This document outlines the advanced engineering architecture designed to scale the AASAMEDCHEM B2B/B2C marketplace to support enterprise-level traffic, prevent resource deadlocks under concurrent order surges, and enforce strict database ACID properties.
 
+> [!NOTE]
+> **TL;DR — Core Scaling & Integrity Mechanisms**
+> * **Redis Caching**: Uses Cache-Aside logic for the product catalog to bypass database calls on read operations and provides sub-millisecond session validation.
+> * **Concurrency Control**: Prevents stock overselling using Redis-based distributed locks (Redlock) and eliminates database deadlocks by sorting product IDs before executing sequential database queries.
+> * **ACID Integrity**: Runs multi-seller cart splitting within unified database transactions executing at `Repeatable Read` / `Serializable` isolation levels.
+
 ---
 
 ## ⚡ 1. Scalable Read/Write Caching with Redis
