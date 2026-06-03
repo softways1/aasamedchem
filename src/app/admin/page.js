@@ -14,7 +14,9 @@ import {
   User as UserIcon,
   Users as UsersIcon,
   ShoppingBag,
-  TrendingUp
+  TrendingUp,
+  AlertCircle,
+  Check
 } from 'lucide-react';
 
 export default function AdminPage() {
